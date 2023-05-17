@@ -1,0 +1,117 @@
+import tweepy import pandas as pd import sys
+import csv import pickle
+from nltk.sentiment.vader import SentimentIntensityAnalyzer import matplotlib.pyplot as plt
+from collections import Counter if sys.version_info[0] < 3:
+input = raw_input
+
+# importing the auth variables from secret.py import secret
+
+# authenicating with authentication variables
+
+auth = tweepy.OAuthHandler(secret.consumer_key, secret.consumer_secret) auth.set_access_token(secret.access_token, secret.access_token_secret)
+api = tweepy.API(auth, wait_on_rate_limit=True)
+
+# Error handling if (not api):
+print("Problem Connecting to API")
+
+# inputs for counts taken
+hash_tag1 = input("Enter first political party: \n") hash_tag2 = input("Enter second political party: \n")
+number = int(input("How many Tweets do you want to analyze for each party?
+\n"))
+location = input("What is the location of parties? \n")
+
+# Getting Geo ID for Places places = "india"
+# place id print(places[0])
+
+tweetsPerQry = 100  # this is the max the API permits
+
+# If results from a specific ID onwards are reqd, set since_id to that ID. # else default to no lower limit, go as far back as API allows
+sinceId = None
+
+# If results only below a specific ID are, set max_id to that ID.
+# else default to no upper limit, start from the most recent tweet matching the search query.
+max_id = -1
+
+data1 = None
+ 
+data2 = None
+
+dataset1 = [] dataset2 = []
+
+outputFile1 = 'party1_tweets.data' outputFile2 = 'party2_tweets.data'
+
+fw1 = open(outputFile1, 'wb') fw2 = open(outputFile2, 'wb')
+
+tweetCount1 = 0tweetCount2 = 0
+print("Downloading max {0} tweets for {1}".format(number, hash_tag1)) while tweetCount1 < number:
+try:
+if (max_id <= 0): if (not sinceId):
+new_tweets = api.search_tweets(q=hash_tag1, count=tweetsPerQry, tweet_mode='extended', lang='en')
+tweetCount1 += len(new_tweets)
+print("Downloaded {0} tweets for {1}".format(tweetCount1, hash_tag1)) else:
+new_tweets = api.search_tweets(q=hash_tag1, count=tweetsPerQry, since_id=sinceId, tweet_mode='extended', lang='en')
+print("here 2")
+else:
+if (not sinceId):
+new_tweets = api.search_tweets(q=hash_tag1, count=tweetsPerQry, max_id=str(max_id - 1), tweet_mode='extended',
+lang='en')
+print("here 3")
+else:
+new_tweets = api.search_tweets(q=hash_tag1, count=tweetsPerQry, max_id=str(max_id - 1),
+since_id=sinceId, tweet_mode='extended', lang='en')
+print("here 4") if not new_tweets:
+print("No more tweets found for {0}".format(hash_tag1)) break
+
+tweets = new_tweets for tweet in tweets:
+dataset1.append(tweet.full_text) tweetCount1 += len(new_tweets)
+ 
+print("Downloaded {0} tweets for {1}".format(tweetCount1, hash_tag1)) max_id = new_tweets[-1].id – 1
+
+except tweepy.TweepError as e:
+# Exit gracefully for any Tweepy errors print("Tweepy Error: {}".format(e)) break
+
+print("Downloading max {0} tweets for {1}".format(number, hash_tag2)) while tweetCount2 < number:
+try:
+if (max_id <= 0): if (not sinceId):
+new_tweets = api.search_tweets(q=hash_tag2, count=tweetsPerQry, tweet_mode='extended', lang='en')
+tweetCount2 += len(new_tweets)
+print("Downloaded {0} tweets for {1}".format(tweetCount2, hash_tag2)) else:
+new_tweets = api.search_tweets(q=hash_tag2, count=tweetsPerQry, since_id=sinceId, tweet_mode='extended', lang='en')
+else:
+if (not sinceId):
+new_tweets = api.search_tweets(q=hash_tag2, count=tweetsPerQry, max_id=str(max_id - 1), tweet_mode='extended',
+lang='en')
+else:
+new_tweets = api.search_tweets(q=hash_tag2, count=tweetsPerQry, max_id=str(max_id - 1),
+since_id=sinceId, tweet_mode='extended', lang='en') if not new_tweets:
+print("No more tweets found for {0}".format(hash_tag2)) break
+
+tweets = new_tweets for tweet in tweets:
+dataset2.append(tweet.full_text) tweetCount2 += len(new_tweets)
+print("Downloaded {0} tweets for {1}".format(tweetCount2, hash_tag2)) max_id = new_tweets[-1].id – 1
+
+except tweepy.TweepError as e:
+# Exit gracefully for any Tweepy errors print("Tweepy Error: {}".format(e)) break
+ 
+# Saving the downloaded data into a pickle file pickle.dump(dataset1, fw1)
+fw1.close() pickle.dump(dataset2, fw2) fw2.close()
+
+print("Total tweets downloaded for {0}: {1}".format(hash_tag1, tweetCount1)) print("Total tweets downloaded for {0}: {1}".format(hash_tag2, tweetCount2))
+# Performing sentiment analysis on the downloaded tweets # Load the pickle files
+with open(outputFile1, 'rb') as fr1:
+data1 = pickle.load(fr1)
+
+with open(outputFile2, 'rb') as fr2: data2 = pickle.load(fr2)
+
+# Create a dataframe from the loaded data
+df1 = pd.DataFrame(data1, columns=['Tweets']) df2 = pd.DataFrame(data2, columns=['Tweets'])
+
+# Create a sentiment analyzer object sia = SentimentIntensityAnalyzer()
+
+# Apply sentiment analysis on tweets
+df1['Sentiment'] = df1['Tweets'].apply(lambda tweet: sia.polarity_scores(tweet)) df2['Sentiment'] = df2['Tweets'].apply(lambda tweet: sia.polarity_scores(tweet)) # Extracting compound scores and storing them in a new column df1['Compound'] = df1['Sentiment'].apply(lambda score: score['compound']) df2['Compound'] = df2['Sentiment'].apply(lambda score: score['compound'])
+
+# Plotting the sentiment scores for the two parties plt.figure(figsize=(10, 6))
+plt.hist(df1['Compound'], bins=20, label=hash_tag1) plt.hist(df2['Compound'], bins=20, label=hash_tag2) plt.xlabel('Sentiment Compound Score') plt.ylabel('Frequency')
+plt.title('Sentiment Analysis of Tweets for {0} and {1}'.format(hash_tag1, hash_tag2))
+plt.legend() plt.show
